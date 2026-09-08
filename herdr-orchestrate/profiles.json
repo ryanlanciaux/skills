@@ -2,41 +2,44 @@
   "defaultProfile": "balanced",
   "agents": {
     "grok": {
-      "kind": "cursor",
-      "command": ["agent", "--model", "cursor-grok-4.6-high"]
-    },
-    "openai": {
       "kind": "pi",
-      "command": ["pi", "--provider", "openai-codex", "--model", "gpt-5.6-sol", "--thinking", "high"]
+      "command": ["pi", "--provider", "xai", "--model", "grok-4.6", "--thinking", "high"]
+    },
+    "astra": {
+      "kind": "pi",
+      "command": ["pi", "--provider", "openai-codex", "--model", "gpt-6-astra", "--thinking", "high"]
     }
   },
   "profiles": {
     "balanced": {
-      "description": "Grok implementation; OpenAI for difficult work and independent review.",
+      "description": "Orchestrate as Grok. Simple workers: Grok. Complex workers and review: Astra.",
       "roles": {
-        "implementer": "grok",
-        "complex": "openai",
-        "reviewer": "openai"
+        "orchestrator": "grok",
+        "simple": "grok",
+        "complex": "astra",
+        "reviewer": "astra"
       },
       "maxWorkers": 3,
       "maxHeavyJobs": 1,
       "waitSeconds": 15
     },
     "difficult": {
-      "description": "OpenAI throughout, with fewer concurrent workers for complex cross-cutting changes.",
+      "description": "Orchestrate as Astra. Simple workers: Grok. Complex workers and review: Astra.",
       "roles": {
-        "implementer": "openai",
-        "complex": "openai",
-        "reviewer": "openai"
+        "orchestrator": "astra",
+        "simple": "grok",
+        "complex": "astra",
+        "reviewer": "astra"
       },
       "maxWorkers": 2,
       "maxHeavyJobs": 1,
       "waitSeconds": 15
     },
     "grok": {
-      "description": "Grok throughout, including a separate reviewer for stable changes.",
+      "description": "Grok throughout.",
       "roles": {
-        "implementer": "grok",
+        "orchestrator": "grok",
+        "simple": "grok",
         "complex": "grok",
         "reviewer": "grok"
       },

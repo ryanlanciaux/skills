@@ -2,10 +2,6 @@
 
 Agent skills.
 
-| Skill | What it does |
-|---|---|
-| [herdr-orchestrate](herdr-orchestrate/) | Run coding agents in Herdr tabs via named profiles |
-
-## License
+- [herdr-orchestrate](herdr-orchestrate/) — simple orchestration, not a DAG. Named profiles route an orchestrator and workers.
 
 MIT
