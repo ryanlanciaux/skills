@@ -13,7 +13,7 @@ Simple orchestration, not a DAG. No stage graph: split work, open workers, wait,
 
 ## 1. Profile
 
-Read **profiles.json beside this SKILL.md** from this skill's directory — not the project.
+Read **profiles.json beside this SKILL.md** from this skill's directory — not the project. If `~/.config/herdr-orchestrate/profiles.json` exists, merge its `agents` and `profiles` on top (local wins).
 
 - Profile arg → `profiles.<name>`. Rest is the task. Else `defaultProfile`.
 - Unknown name → list and ask. Do not substitute.
@@ -31,9 +31,9 @@ If false, stop. Do not control Herdr from outside. Use the installed CLI (`herdr
 
 ## 2. Launch
 
-Read the task and code before splitting. One simple task → one worker. Non-overlapping files. Isolated worktrees for independent changes; never switch a dirty checkout.
+Read the task and code before splitting. Fan out ≤ `maxWorkers` on non-overlapping files, same cwd as the orchestrator. One trivial task → one worker. Default: no worktrees. Use a worktree only when same-cwd would collide (overlapping dirty edits, can't serialize). `worktrees: true` isolates independent changes; `worktrees: false` never uses them. Never switch a dirty checkout.
 
-≤ `maxWorkers`. Start the lane command in a pane (`--no-focus`). Do not pass the task as argv. Wait for idle, then submit: outcome, owned files, report path, local commits only (no push unless authorized).
+Start the lane command in a pane (`--no-focus`). Do not pass the task as argv. Wait for idle, then submit: outcome, owned files, report path, local commits only (no push unless authorized).
 
 **Send ≠ submitted.** Read the transcript until work actually started.
 
