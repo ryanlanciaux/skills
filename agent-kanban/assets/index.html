@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="light dark">
   <title>Agent Kanban</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/style.css">
@@ -11,28 +11,44 @@
 </head>
 <body>
   <header class="masthead">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">▥</span> Agent Kanban <span class="badge">View only</span></div>
-    <div id="connection" role="status" class="connection">Connecting…</div>
+    <div class="brand"><span class="brand-mark" data-icon="board"></span><span>Agent Kanban</span><span class="breadcrumb-divider">/</span><span class="workspace">Workspace</span></div>
+    <div class="header-status"><span class="badge"><span data-icon="lock"></span>Read only</span><div id="connection" role="status" class="connection">Connecting…</div></div>
   </header>
   <main>
     <section class="overview" aria-labelledby="title">
-      <div><div class="eyebrow">Orchestrated work</div><h1 id="title">Loading board…</h1><p id="goal" class="goal"></p></div>
-      <div class="completion"><span id="completion-label">—</span><progress id="progress" max="1" value="0" aria-label="Completed tasks"></progress><span class="small">Task count · not an effort estimate</span></div>
+      <div class="project-heading"><div class="eyebrow accent">Orchestrated work</div><h1 id="title">Loading board…</h1><p id="goal" class="goal"></p></div>
+      <div class="completion"><div class="completion-values"><span id="completion-label">—</span><span id="completion-percent" class="accent"></span></div><progress id="progress" max="1" value="0" aria-label="Completed tasks"></progress><span class="small">Task count, not an effort estimate</span></div>
     </section>
-    <div id="summary" class="summary" hidden></div>
+    <section id="summary" class="summary" aria-label="Latest update"><span data-icon="radio"></span><span id="summary-label" class="eyebrow">Latest update</span><span id="summary-text">Waiting for the board…</span><time id="summary-time"></time></section>
     <section class="toolbar" aria-label="Board filters">
-      <label class="search"><span class="sr-only">Search tasks</span><input id="search" type="search" placeholder="Search tasks, agents, or IDs…" autocomplete="off"></label>
-      <label><span class="sr-only">Filter by agent</span><select id="agent"><option value="">All agents</option></select></label>
-      <span id="showing" class="small"></span>
-      <button id="activity-toggle" type="button" aria-expanded="false" aria-controls="activity">Activity</button>
+      <label class="search"><span class="sr-only">Search tasks, agents, or IDs</span><span data-icon="search"></span><input id="search" type="search" placeholder="Search tasks, agents, or IDs…" autocomplete="off"></label>
+      <label class="agent-filter"><span class="sr-only">Filter by agent</span><select id="agent"><option value="">All agents</option></select><span data-icon="chevron"></span></label>
+      <span id="showing" class="small" role="status"></span>
+      <button id="activity-toggle" type="button" aria-expanded="false" aria-controls="activity"><span data-icon="activity"></span>Activity</button>
     </section>
-    <section id="activity" class="activity" aria-label="Recent activity" hidden></section>
-    <div id="board" class="board" aria-label="Task board"><p class="empty">Waiting for the board…</p></div>
+    <section id="activity" class="activity" aria-label="Recent activity" tabindex="0" hidden></section>
+    <div id="board" class="board" role="region" aria-label="Task board" tabindex="0"><p class="empty">Waiting for the board…</p></div>
   </main>
-  <footer>Managed by agents. Open a card for scope, acceptance criteria, and review evidence.<span id="updated"></span></footer>
+  <footer><span>Read-only workspace. Select a task to inspect its details.</span><span id="updated" role="status">Not yet synced</span></footer>
   <dialog id="detail" aria-labelledby="detail-title">
-    <div class="dialog-bar"><span id="detail-id" class="eyebrow"></span><button id="close-detail" aria-label="Close task details">✕</button></div>
-    <div id="detail-body"></div>
+    <div class="dialog-bar"><div class="detail-breadcrumb"><span data-icon="link"></span><span id="detail-workspace"></span><span class="breadcrumb-divider">/</span><span id="detail-id" class="task-id"></span></div><div class="dialog-dismiss"><span class="escape-hint">esc</span><button id="close-detail" type="button" aria-label="Close task details" autofocus><span data-icon="close"></span></button></div></div>
+    <div id="detail-body">
+      <article class="narrative">
+        <div id="detail-meta" class="detail-meta"><span id="detail-status" class="status-badge"></span><span id="detail-revision" class="small"></span></div>
+        <h2 id="detail-title"></h2>
+        <p id="detail-description" class="description"></p>
+        <div id="detail-sections">
+          <section id="blocker-section" hidden><h3>Blocker</h3><p id="detail-blocker" class="blocker-text"></p></section>
+          <section><h3>Acceptance criteria</h3><ol id="detail-criteria" class="criteria"></ol><p id="criteria-empty" class="small">None recorded.</p></section>
+          <section><h3>Evidence</h3><div id="detail-evidence" class="evidence-list"></div><p id="evidence-empty" class="small">None recorded.</p></section>
+          <section><h3>Recent activity</h3><div id="detail-activity"></div><p id="activity-empty" class="small">No task activity in the available history.</p></section>
+        </div>
+      </article>
+      <aside class="properties" aria-label="Task details">
+        <h3 class="eyebrow">Details</h3><dl id="detail-properties"></dl>
+        <div class="readonly-note"><div><span data-icon="lock"></span>Read-only view</div><p>Task updates are managed by the assigned agents and appear here automatically.</p></div>
+      </aside>
+    </div>
   </dialog>
 </body>
 </html>

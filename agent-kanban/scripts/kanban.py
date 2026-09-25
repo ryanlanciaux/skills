@@ -219,6 +219,8 @@ def serve(state, args):
                         self.end_headers()
                         return
                     body, content_type = encode(view).encode(), "application/json"
+                elif route in ("/fonts/inter-latin.woff2", "/fonts/ibm-plex-mono-latin.woff2"):
+                    body, content_type = (ASSETS / route.lstrip("/")).read_bytes(), "font/woff2"
                 elif route in ("/", "/app.js", "/style.css"):
                     file = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}[route]
                     body = (ASSETS / file).read_bytes()
@@ -227,7 +229,7 @@ def serve(state, args):
                     self.send_error(404)
                     return
                 self.send_response(200)
-                self.send_header("Content-Type", content_type + "; charset=utf-8")
+                self.send_header("Content-Type", content_type if content_type == "font/woff2" else content_type + "; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("X-Content-Type-Options", "nosniff")

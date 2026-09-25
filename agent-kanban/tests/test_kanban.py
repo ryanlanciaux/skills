@@ -101,6 +101,10 @@ class BoardTest(unittest.TestCase):
         for path in ("/", "/app.js", "/style.css", "/health"):
             with HTTP.open(base + path) as response:
                 self.assertEqual(response.status, 200)
+        for path in ("/fonts/inter-latin.woff2", "/fonts/ibm-plex-mono-latin.woff2"):
+            with HTTP.open(base + path) as response:
+                self.assertEqual(response.headers["Content-Type"], "font/woff2")
+                self.assertEqual(response.read(4), b"wOF2")
         with self.assertRaises(HTTPError) as cached:
             HTTP.open(Request(base + "/api/board", headers={"If-None-Match": etag}))
         self.assertEqual(cached.exception.code, 304)

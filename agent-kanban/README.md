@@ -1,10 +1,18 @@
 # Agent Kanban
 
-A lightweight skill for watching agent work. A dark, compact kanban shows planned
+A lightweight skill for watching agent work. A compact kanban shows planned
 owners, active work, review, blockers, completion evidence, and recent activity.
 The browser is read-only: search, filter, and inspect. Agents update through a
 transactional CLI. No MCP, external service, package installation, or model calls
 are needed to serve or refresh the board.
+
+The viewer follows the system light/dark preference, defaulting to light. Local
+Inter and IBM Plex Mono fonts keep it usable offline. On mobile, swipe across
+readable columns and inspect tasks in a scrolling dialog. Completed tasks beyond
+the first four are available through “View more completed.” Search, agent filters,
+activity, focus, and open task details stay in place during the two-second polling
+cycle. Evidence is linked only when the recorded value is an explicit HTTP(S) URL;
+file paths remain visible references.
 
 Requires Python 3.10+ with SQLite support on Linux/macOS. The shell launcher checks dependencies and prints setup instructions if Python or SQLite support is missing; it installs nothing. See [setup and recovery](references/setup.md). Copy this folder to your agent's skill
 directory (for Codex, `${CODEX_HOME:-$HOME/.codex}/skills/agent-kanban`), then ask:
@@ -47,3 +55,9 @@ reboot automatically; `start` resumes the persisted board.
 Run checks with `python3 -m unittest discover -s tests -v`. The optional browser
 check requires Playwright and Chromium already installed; run
 `node tests/browser.mjs <output-directory>`. All test boards use temporary state.
+If Playwright is installed outside the project, set `PLAYWRIGHT_MODULE` to its
+`@playwright/test/index.mjs` path. Browser checks cover system theme changes,
+read-only requests, keyboard dialogs, refresh continuity, and 320px/390px mobile
+layouts, and capture both themes at desktop and mobile sizes. There is no build
+step or TypeScript toolchain; the server serves the HTML, CSS, JavaScript, and fonts
+directly. Check JavaScript syntax with `node --check assets/app.js`.
