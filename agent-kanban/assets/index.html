@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Agent Kanban</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">▥</span> Agent Kanban <span class="badge">View only</span></div>
+    <div id="connection" role="status" class="connection">Connecting…</div>
+  </header>
+  <main>
+    <section class="overview" aria-labelledby="title">
+      <div><div class="eyebrow">Orchestrated work</div><h1 id="title">Loading board…</h1><p id="goal" class="goal"></p></div>
+      <div class="completion"><span id="completion-label">—</span><progress id="progress" max="1" value="0" aria-label="Completed tasks"></progress><span class="small">Task count · not an effort estimate</span></div>
+    </section>
+    <div id="summary" class="summary" hidden></div>
+    <section class="toolbar" aria-label="Board filters">
+      <label class="search"><span class="sr-only">Search tasks</span><input id="search" type="search" placeholder="Search tasks, agents, or IDs…" autocomplete="off"></label>
+      <label><span class="sr-only">Filter by agent</span><select id="agent"><option value="">All agents</option></select></label>
+      <span id="showing" class="small"></span>
+      <button id="activity-toggle" type="button" aria-expanded="false" aria-controls="activity">Activity</button>
+    </section>
+    <section id="activity" class="activity" aria-label="Recent activity" hidden></section>
+    <div id="board" class="board" aria-label="Task board"><p class="empty">Waiting for the board…</p></div>
+  </main>
+  <footer>Managed by agents. Open a card for scope, acceptance criteria, and review evidence.<span id="updated"></span></footer>
+  <dialog id="detail" aria-labelledby="detail-title">
+    <div class="dialog-bar"><span id="detail-id" class="eyebrow"></span><button id="close-detail" aria-label="Close task details">✕</button></div>
+    <div id="detail-body"></div>
+  </dialog>
+</body>
+</html>

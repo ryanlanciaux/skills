@@ -1,0 +1,6 @@
+interface:
+  display_name: "Agent Kanban"
+  short_description: "Watch agent tasks, ownership, and progress live"
+  default_prompt: "Use $agent-kanban to track this goal on a live board and keep agent assignments and status current."
+policy:
+  allow_implicit_invocation: false
