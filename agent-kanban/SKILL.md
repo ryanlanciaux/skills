@@ -23,7 +23,7 @@ Use this skill only when explicitly activated by the user or an enabled local ha
 - **In review:** the worker records implementation/test evidence, names the real reviewer, and moves the card before handing off. This is agent review, not a request for human approval.
 - **Done:** the reviewer verifies the acceptance criteria and records concrete review/check evidence before moving the card. Do not equate generated code, a successful tool call, or one partial check with the full acceptance contract.
 - **Blocked:** record the specific blocker and next resolving action. On interruption, cancellation, or pause, reconcile active cards to backlog/blocked/review according to reality; do not leave fictional running agents. Set `board --mode paused --summary "Reason and next step"` when the goal is paused. Set complete only when the whole authorized goal is complete.
-- Update at claim, material milestone, blocker, review, completion, and scope change. `note` records progress without changing status. Do not create agents, repeated tests, or model polling loops just to maintain the board. The browser polls automatically without model calls.
+- Update at claim, material milestone, blocker, review, completion, and scope change. `note` records progress without changing status. The orchestrator must still supervise already-authorized jobs; the browser's refresh is not agent supervision. Do not create agents, repeated tests, or model calls merely to refresh the board.
 - For edit/move/note, first `show ID`, then pass its `--expected-revision N`. A conflict requires rereading/reconciling; never blindly retry with a new revision. `claim` is atomic even without this flag. Do not overwrite another agent's scope or ownership without a coordinated handoff.
 - `--criterion` replaces the criteria list on edit; `--depends-on` replaces dependencies (no values clears them); `--evidence` appends. If completed work is reopened, review downstream cards and revoke obsolete completion claims.
 - Preserve actual failures and incomplete validation in evidence/notes. Never store secrets or raw sensitive logs; anyone reaching the viewer can read the board. HTTP supports viewing only; task mutations go through the CLI with workspace filesystem access.
@@ -31,6 +31,8 @@ Use this skill only when explicitly activated by the user or an enabled local ha
 ## Agent handoff and resumption
 
 Before delegation, include the exact skill script, state path, card ID, current revision, actor identity, owner scope, acceptance criteria, and status-update requirement in the delegate's prompt. Use [references/agent-handoff.md](references/agent-handoff.md). The lead reconciles cards after agent results or interrupts. Model/provider rules come from the workspace, not this skill. The board does not itself spawn or monitor agent processes.
+
+For detached agents or background commands, follow [background work and recovery](references/background-work.md). Before ending supervision, reconcile every owned active card or hand off to a confirmed supervisor.
 
 Persist activation in a **local, untracked** pointer. In Git, use `git rev-parse --git-path info/agent-kanban.json` (resolve the returned path against the workspace). Example:
 

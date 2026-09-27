@@ -12,6 +12,8 @@ Actor: <runner · model · actual worker identity>
 Reviewer: <actual lead identity>
 Owned scope: <specific files/outcome; avoid conflicting edits>
 Acceptance criteria: <observable requirements>
+Background work, if any: <runner session/job handle, private output/result path,
+supervising agent and next bounded checkpoint; otherwise none>
 
 Read the card; claim it atomically before starting. Use your actor identity.
 If claim fails, stop work on this card and report the conflict to the lead.
@@ -20,6 +22,11 @@ evidence and the named reviewer before sending your final result. Do not mark
 your implementation done before lead review. On interruption, record the last
 verified state; the lead reconciles the card. Do not start other cards or agents
 just because they appear on the board. Use show + expected revision for updates.
+
+For background commands, report the job handle and result location to the
+supervisor immediately, and read the real exit status and output on completion.
+If blocked on a permission prompt or a stopped session, record the blocker and
+last verified result; do not leave the card active.
 ```
 
 Commands (set variables to the provided absolute paths/identity):
