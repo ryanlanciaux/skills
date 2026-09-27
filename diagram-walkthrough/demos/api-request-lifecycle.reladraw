@@ -1,0 +1,68 @@
+// @title  What happens when a client places an order
+// Demo: a backend request traced end to end — sync path first, async side second,
+// then asides for concepts that are not boxes (transactions, retries).
+// Fictional service; swap the names for whatever the codebase actually has.
+
+style band    fill: none  border: #33343d  text: (color: muted)
+style ext     fill: none  border: #6b7280
+style edge_   fill: #2b2412  border: #a3812f
+style app     fill: #241d38  border: #7a5fb5
+style domain  fill: #10243a  border: #3b6ea5
+style store   fill: #142814  border: #486544  badge: database
+style async   fill: #2a1a24  border: #a0527a
+style dim     text: (color: muted)
+style step    fill: #e0b35a  border: #e0b35a  text: (color: #111111, size: small)
+style tag     shape: none  text: (color: #e0b35a, size: small)
+style callout shape: none  text: (color: #e0b35a, size: small)
+style leader  line: (color: #e0b35a, pattern: dashed)
+style later   line: (color: #a0527a, pattern: dashed)
+default edge  text: (size: small)
+
+// @view Request path :: The synchronous path. A request crosses the gateway, runs a fixed middleware chain, and only then reaches a handler that calls one domain service.
+node client "Mobile app"  badge: laptop  style: ext
+node gw "API gateway / [dim]TLS, rate limit[/dim]"  right of client (gap: wide)  style: edge_
+
+node api "orders-api" (at: top-center)  right of gw (gap: wide)  style: band  contents: (widths: match)
+node api.auth "authenticate / [dim]JWT → user[/dim]"  style: app
+node api.validate "validate body / [dim]schema[/dim]"  style: app
+node api.handler "POST /orders handler"  style: app
+
+node dom "Domain" (at: top-center)  right of api (gap: wide)  top level with api  style: band  contents: (widths: match)
+node dom.svc "OrderService.place()"  style: domain
+node dom.pay "PaymentPort / [dim]interface[/dim]"  style: domain
+
+node db "Postgres"  right of dom (gap: wide)  level with dom.svc  style: store
+node psp "Payment provider"  right of dom (gap: wide)  below db  style: ext
+
+edge client -> gw  "HTTPS"  from: right  to: left
+edge gw -> api.auth  from: right  to: left
+edge api.auth -> api.validate  from: bottom  to: top
+edge api.validate -> api.handler  from: bottom  to: top
+edge api.handler -> dom.svc  "place(cmd)"  from: right  to: left
+edge dom.svc -> dom.pay  from: bottom  to: top
+edge dom.svc -> db  "INSERT"  from: right  to: left
+edge dom.pay -> psp  "charge"  from: right  to: left
+
+// @view Async side :: Nothing slow happens in the request. The service writes an outbox row in the same transaction; a relay publishes it and a worker sends the email later.
+node db.orders "orders"
+node db.outbox "outbox"  right of db.orders
+node queue "Queue / [dim]order.placed[/dim]"  right of db (gap: wide)  style: async
+node worker "email-worker"  below queue  style: async
+node mailer "Email provider"  below worker  style: ext
+edge db.outbox -> queue  "relay"  from: right  to: left  style: later
+edge queue -> worker  "consume"  from: bottom  to: top  style: later
+edge worker -> mailer  "send"  from: bottom  to: top  style: later
+
+// @aside Transaction boundary :: The one guarantee that matters here: the order row and the outbox row commit together or not at all. The charge happens before the transaction opens, so a failed insert must refund.
+node dom.svc.tx "● BEGIN … COMMIT"  right of dom.svc text  style: tag
+node db.orders.tx "●"  right of db.orders text  style: tag
+node db.outbox.tx "●"  right of db.outbox text  style: tag
+node txnote "same transaction: both rows or neither. The email can never announce an order that was rolled back." (wrap: 30)  style: callout  above db
+edge txnote -> db  from: bottom  to: top  style: leader
+
+// @aside Retries & idempotency :: Anything that can be retried must be safe to repeat. The client sends an Idempotency-Key; the handler stores it, so a retried POST returns the first result instead of charging twice.
+node s1 "1"  on client top-left  style: step
+node s2 "2"  on api.handler top-left  style: step
+node s3 "3"  on dom.pay top-left  style: step
+node retry "1  client retries on timeout with the same Idempotency-Key / 2  handler looks the key up first; a hit short-circuits / 3  provider also dedupes on the key, belt and braces" (wrap: 34, align: left)  style: callout  below api (gap: wide)
+edge retry -> api.handler  from: top  to: bottom  style: leader

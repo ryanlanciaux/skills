@@ -1,0 +1,66 @@
+// @title  How the Order History screen works
+// Demo: a UI screen read as layers — data → helpers/hooks → screen → components.
+// Fictional app; the shape is what matters, not the names.
+
+// Palette: one style per architectural role (see references/overlays.md).
+style band   fill: none  border: #33343d  text: (color: muted)
+style ext    fill: none  border: #6b7280
+style data   fill: #10243a  border: #3b6ea5
+style logic  fill: #241d38  border: #7a5fb5
+style ui     fill: #12301f  border: #3f8a5a
+style dim    text: (color: muted)
+style step   fill: #e0b35a  border: #e0b35a  text: (color: #111111, size: small)
+style callout  shape: none  text: (color: #e0b35a, size: small)
+style tag    shape: none  text: (color: #e0b35a, size: small)
+style leader  line: (color: #e0b35a, pattern: dashed)
+default edge  line: (path: square, corners: rounded)  text: (size: small)
+
+// @view Layers :: Four layers, left to right. Each layer only talks to its neighbour: components never call the API, and the data layer knows nothing about rendering.
+node ext "Outside" (at: top-center)  style: band
+node ext.api "Orders API / [dim]GET /orders[/dim]"  style: ext
+node ext.prefs "localStorage / [dim]saved filters[/dim]"  style: ext
+
+node data "Data" (at: top-center)  right of ext (gap: wide)  top level with ext  style: band  contents: (widths: match)
+node data.client "apiClient / [dim]auth header, retries[/dim]"  style: data
+node data.cache "Query cache / [dim]keyed by filter[/dim]"  style: data
+
+node logic "Hooks & helpers" (at: top-center)  right of data (gap: wide)  top level with ext  style: band  contents: (widths: match)
+node logic.hook "useOrders(filter)"  style: logic
+node logic.group "groupByMonth()"  style: logic
+node logic.money "formatMoney()"  style: logic
+node logic.filter "useSavedFilter()"  style: logic
+
+node screen "OrderHistoryScreen" (at: top-center)  right of logic (gap: wide)  top level with ext  style: ui  contents: (widths: match)
+node screen.header "PageHeader"  style: ui
+node screen.bar "FilterBar"  style: ui
+node screen.list "OrderList"  style: ui
+node screen.list.row "OrderRow"  style: ui  deck: "" ""
+node screen.empty "EmptyState"  style: ui
+
+edge ext.api -> data.client  from: right  to: left
+edge data.client -> data.cache  from: bottom  to: top
+edge data.cache -> logic.hook  from: right  to: left
+edge ext.prefs -> logic.filter  from: right  to: left  below data
+edge logic.hook -> screen  "orders, status"  from: right  to: left
+
+// @view Data flow :: Follow one render. Numbers mark the order things happen on first load; later renders start at ④ because the cache already has the data.
+node s1 "1"  on logic.filter top-left  style: step
+node s2 "2"  on logic.hook top-left  style: step
+node s3 "3"  on data.client top-left  style: step
+node s4 "4"  on data.cache top-left  style: step
+node s5 "5"  on logic.group top-left  style: step
+node s6 "6"  on screen.list top-left  style: step
+edge logic.hook -> logic.group  "raw orders"  from: bottom  to: top
+edge logic.group -> logic.money  from: bottom  to: top
+
+// @aside Re-render boundary :: Changing a filter is local state in the screen. It changes the cache key, so useOrders refetches — but PageHeader never re-renders because none of its props change.
+node screen.bar.rr "● re-renders"  right of screen.bar text  style: tag
+node screen.list.rr "● re-renders"  right of screen.list text  style: tag
+node logic.hook.rr "● new key"  right of logic.hook text  style: tag
+node why "filter change → new cache key → refetch → only the tagged parts re-render" (wrap: 26)  style: callout  right of screen (gap: wide)  level with screen.bar
+edge why -> screen.bar  from: left  to: right  style: leader
+
+// @aside Where would I add…? :: Rule of thumb the layers make visible: put a change in the leftmost layer that can own it.
+node add_field "new API field → apiClient types, then OrderRow" (wrap: 22)  style: callout  below ext  gap: tight
+node add_calc "new derived value → a helper, unit-tested" (wrap: 22)  style: callout  below logic  top level with add_field
+node add_ui "new control → FilterBar; its state stays in the screen" (wrap: 22)  style: callout  below screen  top level with add_field

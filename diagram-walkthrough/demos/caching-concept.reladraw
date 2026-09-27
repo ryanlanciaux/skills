@@ -1,0 +1,49 @@
+// @title  Where can a read be answered?
+// Demo: a concept, not a codebase — the caching tiers between a user and the
+// source of truth. Shows that the skill works for ideas as well as code.
+
+style tier    fill: #10243a  border: #3b6ea5
+style truth   fill: #142814  border: #486544  badge: database
+style user    fill: none  border: #6b7280
+style dim     text: (color: muted)
+style step    fill: #e0b35a  border: #e0b35a  text: (color: #111111, size: small)
+style tag     shape: none  text: (color: #e0b35a, size: small)
+style callout shape: none  text: (color: #e0b35a, size: small)
+style leader  line: (color: #e0b35a, pattern: dashed)
+style write   line: #d0605e  text: (color: #d0605e)
+style ask     line: (pattern: dashed)
+default edge  text: (size: small)
+
+// @view Tiers :: Each tier to the right is shared by more readers and sits closer to the truth — so it is fresher, but a hit there helps less. A read walks right until some tier can answer it.
+node user "User"  badge: laptop  style: user
+node browser "Browser cache / [dim]~0 ms · per user[/dim]"  right of user (gap: wide)  style: tier
+node cdn "CDN edge / [dim]~20 ms · per region[/dim]"  right of browser (gap: wide)  style: tier
+node app "App memory / [dim]~1 ms · per process[/dim]"  right of cdn (gap: wide)  style: tier
+node redis "Shared cache / [dim]~2 ms · all processes[/dim]"  right of app (gap: wide)  style: tier
+node db "Database / [dim]~10–50 ms · the truth[/dim]"  right of redis (gap: wide)  style: truth
+edge user -> browser  from: right  to: left  style: ask
+edge browser -> cdn  "miss"  from: right  to: left  style: ask
+edge cdn -> app  "miss"  from: right  to: left  style: ask
+edge app -> redis  "miss"  from: right  to: left  style: ask
+edge redis -> db  "miss"  from: right  to: left  style: ask
+
+// @view A full miss :: Worst case: every tier misses. On the way back each tier stores a copy, so the next reader stops earlier. That copy is also what goes stale.
+node s1 "1"  on browser top-left  style: step
+node s2 "2"  on cdn top-left  style: step
+node s3 "3"  on app top-left  style: step
+node s4 "4"  on redis top-left  style: step
+node s5 "5"  on db top-left  style: step
+edge db -> redis  "fill"  from: bottom  to: bottom
+edge redis -> app  "fill"  from: bottom  to: bottom
+edge app -> cdn  "fill"  from: bottom  to: bottom
+edge cdn -> browser  "fill"  from: bottom  to: bottom
+
+// @aside A write :: A write goes to the truth, then invalidates what it can reach. The shared cache is easy; every process's memory is harder; browser and CDN copies can only expire.
+node writer "PUT /profile"  above db (gap: wide)  style: user
+edge writer -> db  "1 write"  from: bottom  to: top  style: write
+edge writer -> redis  "2 delete key"  from: left  to: top  style: write
+node redis.inv "● invalidated"  right of redis text  style: tag
+node app.inv "● stale until pub/sub"  right of app text  style: tag
+node cdn.inv "● stale until TTL"  right of cdn text  style: tag
+node browser.inv "● stale until TTL"  right of browser text  style: tag
+node rule "Rule of thumb: the further left a copy lives, the less control you have over it — so give it a shorter TTL or a versioned URL." (wrap: 34)  style: callout  below browser (gap: wide)
