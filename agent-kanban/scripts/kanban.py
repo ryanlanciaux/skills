@@ -23,6 +23,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import URLError
 from urllib.request import build_opener, ProxyHandler
 
+def frame_ancestors() -> str:
+    """CSP frame-ancestors. Default 'none'; AGENT_KANBAN_FRAME_ANCESTORS lists
+    space-separated http(s) origins (e.g. a wall dashboard) allowed to embed."""
+    raw = os.environ.get("AGENT_KANBAN_FRAME_ANCESTORS", "").split()
+    ok = [o for o in raw if re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?", o)]
+    return " ".join(ok) if ok else "'none'"
+
+
 STATUSES = ("backlog", "in_progress", "in_review", "blocked", "done")
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 LOCAL_HTTP = build_opener(ProxyHandler({}))
@@ -233,7 +241,7 @@ def serve(state, args):
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
+                self.send_header("Content-Security-Policy", f"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors {frame_ancestors()}; base-uri 'none'")
                 if etag:
                     self.send_header("ETag", etag)
                 self.end_headers()
