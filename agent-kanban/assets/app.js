@@ -1,4 +1,9 @@
 "use strict";
+// Apply ?theme=dark|light before first paint-sensitive work (external script; CSP-safe).
+(() => {
+  const theme = new URLSearchParams(location.search).get("theme");
+  if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+})();
 const $ = (id) => document.getElementById(id);
 const labels = {backlog:"Backlog", in_progress:"In progress", in_review:"In review", blocked:"Blocked", done:"Done"};
 const priorityOrder = {high:0, normal:1, low:2};
