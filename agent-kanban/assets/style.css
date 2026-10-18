@@ -24,7 +24,7 @@
     --evidence-bg:#1a2029; --badge-bg:#161b25; --backdrop:#06090dc9;
   }
 }
-/* Explicit ?theme= dark/light via data-theme (set in app.js). Overrides system preference. */
+/* data-theme comes from the server (--theme, default dark) or an explicit ?theme= in app.js. Overrides system preference. */
 [data-theme="dark"] {
   color-scheme:dark;
   --bg:#0d1017; --surface:#161b25; --dialog:#161b25; --sidebar:#12171f;
@@ -46,7 +46,7 @@
   --evidence-bg:#f3f6fa; --badge-bg:#eaf0f5; --backdrop:#1c2a4266;
 }
 * { box-sizing:border-box; }
-html { scrollbar-gutter:stable; }
+html { scrollbar-gutter:stable; background:var(--bg); }
 body { margin:0; min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; background:var(--bg); color:var(--text); }
 body.modal-open { overflow:hidden; }
 button,input,select { font:inherit; color:inherit; }

@@ -232,6 +232,11 @@ def serve(state, args):
                 elif route in ("/", "/app.js", "/style.css"):
                     file = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}[route]
                     body = (ASSETS / file).read_bytes()
+                    if route == "/" and args.theme != "system":
+                        # Theme is fixed in the served HTML so the first paint is already
+                        # in it; app.js only applies an explicit ?theme= override.
+                        body = (body.replace(b'<html lang="en">', f'<html lang="en" data-theme="{args.theme}">'.encode(), 1)
+                                    .replace(b'content="light dark"', f'content="{args.theme}"'.encode(), 1))
                     content_type = {"/": "text/html", "/app.js": "text/javascript", "/style.css": "text/css"}[route]
                 else:
                     self.send_error(404)
@@ -293,6 +298,7 @@ def lifecycle(state, args):
                "--host", args.host, "--port", str(args.port)]
     if args.public_url:
         command += ["--public-url", args.public_url]
+    command += ["--theme", args.theme]
     with (state / "server.log").open("ab") as log:
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
     for _ in range(60):
@@ -353,6 +359,9 @@ def parser():
                          help="Bind address: --host overrides AGENT_KANBAN_HOST; default 127.0.0.1")
         sub.add_argument("--port", type=int, default=4317)
         sub.add_argument("--public-url")
+        sub.add_argument("--theme", choices=("dark", "light", "system"),
+                         default=os.environ.get("AGENT_KANBAN_THEME", "").strip() or "dark",
+                         help="Board theme: --theme overrides AGENT_KANBAN_THEME; default dark")
     commands.add_parser("status")
     commands.add_parser("stop")
     return p
