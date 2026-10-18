@@ -38,6 +38,7 @@
         <h2 id="detail-title"></h2>
         <p id="detail-description" class="description"></p>
         <div id="detail-sections">
+          <section id="images-section" hidden><h3>Images</h3><div id="detail-images" class="image-grid"></div></section>
           <section id="blocker-section" hidden><h3>Blocker</h3><p id="detail-blocker" class="blocker-text"></p></section>
           <section><h3>Acceptance criteria</h3><ol id="detail-criteria" class="criteria"></ol><p id="criteria-empty" class="small">None recorded.</p></section>
           <section><h3>Evidence</h3><div id="detail-evidence" class="evidence-list"></div><p id="evidence-empty" class="small">None recorded.</p></section>
@@ -49,6 +50,10 @@
         <div class="readonly-note"><div><span data-icon="lock"></span>Read-only view</div><p>Task updates are managed by the assigned agents and appear here automatically.</p></div>
       </aside>
     </div>
+  </dialog>
+  <dialog id="lightbox" class="lightbox" aria-label="Image viewer">
+    <div class="dialog-bar"><span id="lightbox-caption" class="small"></span><div class="dialog-dismiss"><span class="escape-hint">esc</span><button id="lightbox-close" type="button" aria-label="Close image viewer" autofocus><span data-icon="close"></span></button></div></div>
+    <div class="lightbox-stage"><button id="lightbox-prev" class="lightbox-step" type="button" aria-label="Previous image"><span data-icon="left"></span></button><div id="lightbox-frame" class="lightbox-frame"></div><button id="lightbox-next" class="lightbox-step" type="button" aria-label="Next image"><span data-icon="right"></span></button></div>
   </dialog>
 </body>
 </html>

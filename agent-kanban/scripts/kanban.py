@@ -8,13 +8,16 @@ import argparse
 import contextlib
 import datetime as dt
 import fcntl
+import ipaddress
 import json
 import os
 from pathlib import Path
 import re
+import secrets
 import signal
 import socket
 import sqlite3
+import stat
 import subprocess
 import sys
 import time
@@ -34,6 +37,12 @@ def frame_ancestors() -> str:
 STATUSES = ("backlog", "in_progress", "in_review", "blocked", "done")
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 LOCAL_HTTP = build_opener(ProxyHandler({}))
+# Card images are copied into <state>/images under random names and served only
+# from this route. Types are decided by magic bytes, never by the file name.
+IMAGE_ROUTE = re.compile(r"/images/([0-9a-f]{32}\.(?:png|jpg|gif|webp))")
+IMAGE_TYPES = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
+IMAGE_MAX_BYTES = 5 * 1024 * 1024
+IMAGES_PER_TASK = 6
 
 
 def now():
@@ -59,6 +68,126 @@ def connection(state):
         yield db
     finally:
         db.close()
+
+
+def ensure_write_token(state):
+    """Per-board secret reserved for any future HTTP write API. The viewer never
+    reads it, so it cannot leak into pages, snapshots or logs."""
+    path = state / "write-token"
+    if path.exists():
+        return
+    temporary = state / f"write-token.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(descriptor, (secrets.token_urlsafe(32) + "\n").encode())
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    # link() never replaces an existing token, so concurrent creators agree on one.
+    with contextlib.suppress(FileExistsError):
+        os.link(temporary, path)
+    temporary.unlink()
+
+
+def image_kind(head):
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def store_image(state, source):
+    """Copy a local PNG, JPEG, GIF or WebP into the board and return its route."""
+    if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", source):
+        raise ValueError(f"Images must be local files, not URLs: {source} (prefix ./ for a local name containing ':').")
+    try:
+        with open(Path(source).expanduser(), "rb") as file:
+            if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
+                raise ValueError(f"Not a regular file: {source}")
+            data = file.read(IMAGE_MAX_BYTES + 1)
+    except OSError as error:
+        raise ValueError(f"Cannot read image {source}: {error.strerror or error}")
+    if len(data) > IMAGE_MAX_BYTES:
+        raise ValueError(f"Image is larger than 5 MB: {source}")
+    kind = image_kind(data[:16])
+    if not kind:
+        raise ValueError(f"Unsupported image (use PNG, JPEG, GIF or WebP; SVG is not accepted): {source}")
+    folder = state / "images"
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    name = f"{secrets.token_hex(16)}.{kind}"
+    descriptor = os.open(folder / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as file:
+        file.write(data)
+    return "/images/" + name
+
+
+def stored_image(state, route):
+    """Resolve an image route to its file inside <state>/images, or None."""
+    match = IMAGE_ROUTE.fullmatch(route or "")
+    if not match:
+        return None
+    folder = (state / "images").resolve()
+    file = (folder / match.group(1)).resolve()
+    return file if file.parent == folder and file.is_file() else None
+
+
+def discard_images(state, routes):
+    for route in routes:
+        file = stored_image(state, route)
+        if file:
+            file.unlink(missing_ok=True)
+
+
+def image_routes(task):
+    return {route for route in [task.get("bot_avatar"), *task.get("images", [])] if route}
+
+
+def parse_progress(args):
+    chosen = [flag for flag, value in (("--progress", args.progress), ("--steps", args.steps),
+                                       ("--clear-progress", args.clear_progress)) if value not in (None, False)]
+    if len(chosen) > 1:
+        raise ValueError(f"Use only one of {', '.join(chosen)}.")
+    if args.progress is not None:
+        if not re.fullmatch(r"\d{1,3}", args.progress.strip()) or int(args.progress) > 100:
+            raise ValueError("--progress must be a whole number from 0 to 100.")
+        return {"percent": int(args.progress)}
+    if args.steps is not None:
+        match = re.fullmatch(r"\s*(\d{1,5})\s*/\s*(\d{1,5})\s*", args.steps)
+        if not match or int(match.group(2)) == 0 or int(match.group(1)) > int(match.group(2)):
+            raise ValueError("--steps must look like DONE/TOTAL with 0 <= DONE <= TOTAL and TOTAL > 0, e.g. 3/5.")
+        return {"done": int(match.group(1)), "total": int(match.group(2))}
+    return None
+
+
+def apply_card_extras(task, args, media):
+    """Optional bot identity, progress and images. Keys exist only while set, so
+    plain cards keep exactly the fields (and rendering) they always had."""
+    if args.clear_bot:
+        task.pop("bot_name", None)
+        task.pop("bot_avatar", None)
+    if args.bot_name is not None:
+        if not args.bot_name.strip() or len(args.bot_name) > 80:
+            raise ValueError("Use a nonempty --bot-name of at most 80 characters (or --clear-bot).")
+        task["bot_name"] = args.bot_name.strip()
+    if media["avatar"]:
+        task["bot_avatar"] = media["avatar"]
+    progress = parse_progress(args)
+    if args.clear_progress:
+        task.pop("progress", None)
+    elif progress:
+        task["progress"] = progress
+    if args.clear_images:
+        task.pop("images", None)
+    if media["images"]:
+        images = task.get("images", []) + media["images"]
+        if len(images) > IMAGES_PER_TASK:
+            raise ValueError(f"A card holds at most {IMAGES_PER_TASK} images; use --clear-images to replace them.")
+        task["images"] = images
 
 
 def task_row(row):
@@ -111,6 +240,29 @@ def validate_task(task, all_tasks):
 def mutate(state, args):
     if not args.actor or not args.actor.strip():
         raise ValueError("Mutations require --actor (the actual agent identity).")
+    media = {"avatar": None, "images": []}
+    if args.command in ("add", "edit"):
+        parse_progress(args)
+        try:
+            if args.bot_avatar is not None:
+                media["avatar"] = store_image(state, args.bot_avatar)
+            for path in args.image or []:
+                media["images"].append(store_image(state, path))
+        except BaseException:
+            discard_images(state, [media["avatar"], *media["images"]])
+            raise
+    try:
+        result, released = record(state, args, media)
+    except BaseException:
+        discard_images(state, [media["avatar"], *media["images"]])
+        raise
+    # Replaced or cleared images belong to no card any more.
+    discard_images(state, released)
+    return result
+
+
+def record(state, args, media):
+    released = set()
     with connection(state) as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT * FROM board WHERE id=1").fetchone()
@@ -142,6 +294,7 @@ def mutate(state, args):
                         "priority": args.priority or "normal", "depends_on": args.depends_on or [],
                         "criteria": args.criterion or [], "evidence": args.evidence or [], "blocker": "",
                         "created_at": now(), "updated_at": now(), "last_actor": args.actor}
+                apply_card_extras(task, args, media)
                 revision = 1
             else:
                 if not previous:
@@ -167,6 +320,9 @@ def mutate(state, args):
                     if value is not None:
                         task[field] = value
                 task["evidence"] += getattr(args, "evidence", None) or []
+                if args.command == "edit":
+                    apply_card_extras(task, args, media)
+                    released = image_routes(previous) - image_routes(task)
                 task.update(updated_at=now(), last_actor=args.actor)
             validate_task(task, tasks)
             db.execute("INSERT INTO tasks VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, revision=excluded.revision",
@@ -176,7 +332,8 @@ def mutate(state, args):
         db.execute("UPDATE board SET data=?, revision=revision+1 WHERE id=1", (encode(board),))
         db.execute("INSERT INTO events(task_id, actor, message, at) VALUES (?, ?, ?, ?)", (task_id, args.actor, message, now()))
         db.commit()
-        return result or board
+        ensure_write_token(state)
+        return result or board, released
 
 
 def atomic_json(path, value):
@@ -188,6 +345,13 @@ def atomic_json(path, value):
 def local_url(host, port):
     host = "127.0.0.1" if host == "0.0.0.0" else "::1" if host == "::" else host
     return f"http://{'[' + host + ']' if ':' in host else host}:{port}"
+
+
+def loopback(host):
+    try:
+        return host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def running(state):
@@ -202,6 +366,7 @@ def running(state):
 
 def serve(state, args):
     snapshot(state)
+    ensure_write_token(state)
     # A lock is held for the entire server lifetime; another start cannot replace
     # metadata or accidentally orphan a process serving this board.
     with (state / "server.lock").open("a") as lock:
@@ -214,10 +379,34 @@ def serve(state, args):
             def log_message(self, *_):
                 pass
 
-            def do_GET(self):
+            def __getattr__(self, name):
+                # Every method other than GET/HEAD (POST, PUT, DELETE, ...) is refused:
+                # the browser is a read-only view and all writes go through the CLI.
+                if name.startswith("do_"):
+                    return self.refuse
+                raise AttributeError(name)
+
+            def refuse(self):
+                self.send_response(405)
+                self.send_header("Allow", "GET, HEAD")
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.close_connection = True
+
+            def do_HEAD(self):
+                self.do_GET(head=True)
+
+            def do_GET(self, head=False):
                 route = self.path.split("?", 1)[0]
                 etag = None
-                if route == "/health":
+                cache = "no-cache"
+                image = stored_image(state, route) if route.startswith("/images/") else None
+                if image:
+                    # Random names are never reused, so stored images are immutable.
+                    body, content_type = image.read_bytes(), IMAGE_TYPES[image.suffix[1:]]
+                    cache = "private, max-age=31536000, immutable"
+                elif route == "/health":
                     body, content_type = encode({"instance": instance}).encode(), "application/json"
                 elif route == "/api/board":
                     view = snapshot(state)
@@ -242,14 +431,17 @@ def serve(state, args):
                     self.send_error(404)
                     return
                 self.send_response(200)
-                self.send_header("Content-Type", content_type if content_type == "font/woff2" else content_type + "; charset=utf-8")
+                binary = content_type.startswith(("font/", "image/"))
+                self.send_header("Content-Type", content_type if binary else content_type + "; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
-                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Cache-Control", cache)
                 self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("Content-Security-Policy", f"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors {frame_ancestors()}; base-uri 'none'")
+                self.send_header("Content-Security-Policy", f"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors {frame_ancestors()}; base-uri 'none'")
                 if etag:
                     self.send_header("ETag", etag)
                 self.end_headers()
+                if head:
+                    return
                 try:
                     self.wfile.write(body)
                 except (BrokenPipeError, ConnectionResetError):
@@ -342,6 +534,15 @@ def parser():
             sub.add_argument("--priority", choices=("high", "normal", "low"))
             sub.add_argument("--depends-on", nargs="*")
             sub.add_argument("--criterion", action="append")
+            sub.add_argument("--bot-name", help="Friendly name of the bot working this card")
+            sub.add_argument("--bot-avatar", metavar="PATH", help="Local PNG/JPEG/GIF/WebP avatar (copied into the board)")
+            sub.add_argument("--clear-bot", action="store_true", help="Remove the bot name and avatar")
+            sub.add_argument("--progress", metavar="N", help="Card progress, 0-100 percent")
+            sub.add_argument("--steps", metavar="DONE/TOTAL", help="Card progress as steps, e.g. 3/5")
+            sub.add_argument("--clear-progress", action="store_true", help="Remove card progress")
+            sub.add_argument("--image", action="append", metavar="PATH",
+                             help=f"Attach a local PNG/JPEG/GIF/WebP (repeatable, up to {IMAGES_PER_TASK} per card)")
+            sub.add_argument("--clear-images", action="store_true", help="Remove attached images (before adding any --image)")
         if command in ("add", "edit", "move"):
             sub.add_argument("--assignee")
             sub.add_argument("--reviewer")
@@ -372,6 +573,9 @@ def main():
     args = parser().parse_args()
     state = Path(args.state).expanduser().resolve()
     try:
+        if args.command in ("serve", "start") and not loopback(args.host):
+            print(f"Warning: binding {args.host} exposes this board to other machines without authentication. "
+                  "Use only on a trusted network; the default 127.0.0.1 is local-only.", file=sys.stderr)
         if args.command == "serve":
             serve(state, args)
             return

@@ -9,7 +9,7 @@ const labels = {backlog:"Backlog", in_progress:"In progress", in_review:"In revi
 const priorityOrder = {high:0, normal:1, low:2};
 const columns = new Map();
 const cards = new Map();
-let data, etag, selected, connectedAt, timer, returnFocus;
+let data, etag, selected, connectedAt, timer, returnFocus, lightbox;
 let completedLimit = 4;
 
 function el(tag, className, text) {
@@ -34,7 +34,8 @@ function icon(name, className = "") {
     check:"M22 12a10 10 0 1 1-6-9M8 11l4 4L22 4",
     alert:"M12 8v5M12 16v.1M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0",
     document:"M14 2H5v20h14V7ZM14 2v6h5M8 12h8M8 16h6",
-    external:"M7 17 17 7M7 7h10v10"
+    external:"M7 17 17 7M7 7h10v10",
+    left:"m15 18-6-6 6-6", right:"m9 18 6-6-6-6"
   };
   const node = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   for (const [key,value] of Object.entries({viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"1.5","stroke-linecap":"round","stroke-linejoin":"round","aria-hidden":"true",focusable:"false",class:`icon ${className}`})) node.setAttribute(key,value);
@@ -63,6 +64,30 @@ function avatar(name) {
   const initials = (name || "?").trim().split(/\s+/).slice(0,2).map(s => s[0]).join("").toUpperCase();
   const node = el("span", "avatar", initials);
   node.setAttribute("aria-hidden", "true");
+  return node;
+}
+// Only images stored by the CLI are ever loaded (img-src 'self'); anything else is ignored.
+function imageUrl(value) {
+  return typeof value === "string" && /^\/images\/[0-9a-f]{32}\.(png|jpg|gif|webp)$/.test(value) ? value : null;
+}
+function taskImages(task) {
+  return Array.isArray(task.images) ? task.images.map(imageUrl).filter(Boolean) : [];
+}
+function progressInfo(progress) {
+  if (!progress || typeof progress !== "object") return null;
+  const {done,total,percent} = progress;
+  if (Number.isInteger(total) && total > 0 && Number.isInteger(done) && done >= 0 && done <= total)
+    return {value:done, max:total, label:`${done} of ${total} steps`, short:`${done}/${total}`};
+  if (Number.isInteger(percent) && percent >= 0 && percent <= 100)
+    return {value:percent, max:100, label:`${percent}%`, short:`${percent}%`};
+  return null;
+}
+function botAvatar(task) {
+  const src = imageUrl(task.bot_avatar);
+  if (!src) return avatar(task.bot_name);
+  const node = el("img", "avatar bot-avatar");
+  node.src = src;
+  node.alt = "";
   return node;
 }
 function eventNode(event) {
@@ -104,6 +129,18 @@ function fillCard(card, task) {
     top.append(priority);
   } else if (task.status === "done") top.append(icon("check","complete-icon"));
   card.replaceChildren(top, el("span", "card-title", task.title));
+  const images = taskImages(task);
+  if (images.length) {
+    // Not a nested control (cards are buttons): a click here opens the lightbox,
+    // keyboard users reach every image from the task details instead.
+    const thumb = el("span", "card-thumb");
+    const image = el("img");
+    image.src = images[0];
+    image.alt = "";
+    thumb.append(image);
+    if (images.length > 1) thumb.append(el("span", "card-thumb-count", `+${images.length - 1}`));
+    card.append(thumb);
+  }
   if (task.description && task.status !== "done") card.append(el("span", "card-description preview", task.description));
   if (task.depends_on?.length) {
     const context = el("span", "context");
@@ -115,9 +152,21 @@ function fillCard(card, task) {
     context.append(icon("alert"),el("span","preview",task.blocker));
     card.append(context);
   }
+  const progress = progressInfo(task.progress);
+  if (progress) {
+    const row = el("span", "card-progress");
+    const bar = el("progress");
+    bar.max = progress.max;
+    bar.value = progress.value;
+    bar.setAttribute("aria-label", progress.label);
+    row.append(bar, el("span", "card-progress-label", progress.short));
+    card.append(row);
+  }
   const owner = el("span", "owner");
   const scope = task.scope || (task.status === "backlog" ? "Planned" : "");
-  owner.append(avatar(task.assignee), el("span", "owner-name", `${task.assignee || "Unassigned"}${scope ? ` · ${scope}` : ""}`), timestamp(task.updated_at,true));
+  const bot = task.bot_name || imageUrl(task.bot_avatar);
+  const who = task.bot_name ? `${task.bot_name}${task.assignee && task.assignee !== task.bot_name ? ` · ${task.assignee}` : ""}` : task.assignee || "Unassigned";
+  owner.append(bot ? botAvatar(task) : avatar(task.assignee), el("span", "owner-name", `${who}${scope ? ` · ${scope}` : ""}`), timestamp(task.updated_at,true));
   card.append(owner);
   if (task.status === "in_review" && task.reviewer) card.append(el("span", "reviewer", `Reviewing · ${task.reviewer}`));
   if (task.status === "in_progress") {
@@ -125,7 +174,8 @@ function fillCard(card, task) {
     warning.dataset.staleAt = task.updated_at;
     card.append(warning);
   }
-  card.setAttribute("aria-label", `${task.id}: ${task.title}`);
+  const extras = [task.bot_name && `worked by ${task.bot_name}`, progress?.label, images.length && `${images.length} ${images.length === 1 ? "image" : "images"}`].filter(Boolean);
+  card.setAttribute("aria-label", `${task.id}: ${task.title}${extras.length ? `, ${extras.join(", ")}` : ""}`);
 }
 function initializeColumns() {
   $("board").replaceChildren();
@@ -183,7 +233,7 @@ function render() {
   }
   const query = $("search").value.toLowerCase().trim();
   const visible = tasks.filter(t => (!currentAgent || t.assignee === currentAgent) &&
-    [t.id,t.title,t.description,t.assignee,t.reviewer,t.scope,t.blocker,...(t.criteria || []),...(t.depends_on || [])].join(" ").toLowerCase().includes(query));
+    [t.id,t.title,t.description,t.assignee,t.reviewer,t.scope,t.blocker,t.bot_name,...(t.criteria || []),...(t.depends_on || [])].join(" ").toLowerCase().includes(query));
   setText($("showing"),query || currentAgent ? `${visible.length} of ${tasks.length} tasks` : `${tasks.length} tasks`);
   if (!columns.size) initializeColumns();
   for (const [status,column] of columns) {
@@ -197,7 +247,7 @@ function render() {
         const node = el("button","card");
         node.type = "button";
         node.dataset.taskId = task.id;
-        node.addEventListener("click",() => openDetail(task.id));
+        node.addEventListener("click",event => event.target.closest?.(".card-thumb") ? openLightbox(task.id,0) : openDetail(task.id));
         cached = {node};
         cards.set(task.id,cached);
       }
@@ -272,13 +322,32 @@ function renderDetail() {
     const node = el("li"); node.append(el("span","criterion-text",item)); return node;
   });
   renderList($("detail-evidence"),evidence,evidenceNode);
+  const images = taskImages(task);
+  $("images-section").hidden = !images.length;
+  renderList($("detail-images"),images,url => {
+    const node = el("button","image-button");
+    node.type = "button";
+    const image = el("img");
+    image.src = url;
+    image.alt = "";
+    node.append(image);
+    node.addEventListener("click",() => openLightbox(selected,Number(node.dataset.index)));
+    return node;
+  },url => url);
+  [...$("detail-images").children].forEach((node,index) => {
+    node.dataset.index = index;
+    node.setAttribute("aria-label",`Open image ${index + 1} of ${images.length}`);
+  });
   renderList($("detail-activity"),events,eventNode,e => e.seq);
   $("criteria-empty").hidden = !!criteria.length;
   $("evidence-empty").hidden = !!evidence.length;
   $("activity-empty").hidden = !!events.length;
   const properties = [
     ["Priority",task.priority ? task.priority[0].toUpperCase() + task.priority.slice(1) : "Not recorded"],
-    ["Agent",task.assignee || "Unassigned"], ["Scope",task.scope || "Not recorded"],
+    ["Agent",task.assignee || "Unassigned"],
+    ...(task.bot_name ? [["Bot",task.bot_name]] : []),
+    ...(progressInfo(task.progress) ? [["Progress",progressInfo(task.progress).label]] : []),
+    ["Scope",task.scope || "Not recorded"],
     ["Reviewer",task.reviewer || "None recorded"],
     ["Dependencies",(task.depends_on || []).map(id => `${id} — ${labels[data.tasks.find(t => t.id === id)?.status] || "Unavailable"}`).join("\n") || "None recorded"],
     ["Last updated",Number.isFinite(Date.parse(task.updated_at)) ? `${age(task.updated_at)}\n${new Date(task.updated_at).toLocaleString()}` : "Not recorded"]
@@ -299,6 +368,29 @@ function openDetail(id) {
   document.body.classList.add("modal-open");
   $("detail").showModal();
   $("detail-body").scrollTop = 0;
+}
+// Read-only lightbox: Escape, the close button or a click outside the arrows closes it.
+function openLightbox(id,index) {
+  const task = data?.tasks.find(t => t.id === id);
+  const images = task ? taskImages(task) : [];
+  if (!images.length) return;
+  lightbox = {images,index:Math.min(Math.max(index,0),images.length - 1),returnFocus:document.activeElement};
+  showLightboxImage();
+  document.body.classList.add("modal-open");
+  $("lightbox").showModal();
+}
+function showLightboxImage() {
+  const {images,index} = lightbox;
+  const image = el("img");
+  image.src = images[index];
+  image.alt = `Image ${index + 1} of ${images.length}`;
+  $("lightbox-frame").replaceChildren(image);
+  setText($("lightbox-caption"),`Image ${index + 1} of ${images.length}`);
+  $("lightbox-prev").hidden = $("lightbox-next").hidden = images.length < 2;
+}
+function stepLightbox(delta) {
+  lightbox.index = (lightbox.index + delta + lightbox.images.length) % lightbox.images.length;
+  showLightboxImage();
 }
 function updateTimes() {
   for (const node of document.querySelectorAll("time[data-relative]")) setText(node,age(node.dateTime,node.dataset.relative === "compact"));
@@ -364,5 +456,28 @@ function outsideDialog(event) {
 }
 $("detail").addEventListener("pointerdown",event => { backdropPress = outsideDialog(event); });
 $("detail").addEventListener("click",event => { if (backdropPress && outsideDialog(event)) $("detail").close(); backdropPress = false; });
+$("lightbox").addEventListener("click",event => {
+  const step = event.target.closest?.(".lightbox-step");
+  if (step) stepLightbox(step.id === "lightbox-prev" ? -1 : 1);
+  else $("lightbox").close();
+});
+$("lightbox").addEventListener("keydown",event => {
+  if (lightbox?.images.length > 1 && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+    event.preventDefault();
+    stepLightbox(event.key === "ArrowLeft" ? -1 : 1);
+  } else if (event.key === "Tab") {
+    // Keep focus inside the viewer, matching the details dialog.
+    const focusable = [...$("lightbox").querySelectorAll("button")].filter(n => n.getClientRects().length);
+    const first = focusable[0], last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+});
+$("lightbox").addEventListener("close",() => {
+  $("lightbox-frame").replaceChildren();
+  if (!$("detail").open) document.body.classList.remove("modal-open");
+  if (lightbox?.returnFocus?.isConnected) lightbox.returnFocus.focus({preventScroll:true});
+  lightbox = undefined;
+});
 window.addEventListener("online",() => { setText($("connection"),"Reconnecting…"); });
 refresh();

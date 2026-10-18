@@ -112,7 +112,7 @@ class BoardTest(unittest.TestCase):
         for method in ("POST", "PUT", "PATCH", "DELETE"):
             with self.assertRaises(HTTPError) as denied:
                 HTTP.open(Request(base + "/api/board", method=method, data=b'{}'))
-            self.assertEqual(denied.exception.code, 501)
+            self.assertEqual(denied.exception.code, 405)
             denied.exception.close()
         with self.assertRaises(HTTPError) as hidden:
             HTTP.open(base + "/../board.sqlite3")

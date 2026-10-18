@@ -26,6 +26,7 @@ Use this skill only when explicitly activated by the user or an enabled local ha
 - Update at claim, material milestone, blocker, review, completion, and scope change. `note` records progress without changing status. The orchestrator must still supervise already-authorized jobs; the browser's refresh is not agent supervision. Do not create agents, repeated tests, or model calls merely to refresh the board.
 - For edit/move/note, first `show ID`, then pass its `--expected-revision N`. A conflict requires rereading/reconciling; never blindly retry with a new revision. `claim` is atomic even without this flag. Do not overwrite another agent's scope or ownership without a coordinated handoff.
 - `--criterion` replaces the criteria list on edit; `--depends-on` replaces dependencies (no values clears them); `--evidence` appends. If completed work is reopened, review downstream cards and revoke obsolete completion claims.
+- The header bar is **done tasks / total tasks** (a task count, not an effort estimate). A card's own bar is optional, agent-reported progress of that one card; set it only when you can measure it honestly.
 - Preserve actual failures and incomplete validation in evidence/notes. Never store secrets or raw sensitive logs; anyone reaching the viewer can read the board. HTTP supports viewing only; task mutations go through the CLI with workspace filesystem access.
 
 ## Agent handoff and resumption
@@ -52,5 +53,44 @@ sh "$SKILL_DIR/scripts/kanban.sh" claim task-01 --note "Starting the assigned sc
 sh "$SKILL_DIR/scripts/kanban.sh" show task-01
 sh "$SKILL_DIR/scripts/kanban.sh" move task-01 --expected-revision 2 --status in_review --reviewer "lead" --evidence "Changed files and focused check results" --note "Ready for lead review"
 ```
+
+### Optional card extras (`add` and `edit`)
+
+Cards without these render exactly as before.
+
+| Option | Effect |
+| --- | --- |
+| `--bot-name TEXT` | Friendly name shown in the card footer as who is working it (assignee stays visible). |
+| `--bot-avatar PATH` | Small round avatar next to the bot name. |
+| `--clear-bot` | Remove bot name and avatar. |
+| `--progress N` | Card progress bar, whole number 0–100. |
+| `--steps DONE/TOTAL` | Card progress as steps, e.g. `3/5` (TOTAL > 0, DONE <= TOTAL). |
+| `--clear-progress` | Remove the card bar. Use one of the three progress options per call. |
+| `--image PATH` | Attach an image (repeatable; `edit` appends; at most 6 per card). The card shows the first as a thumbnail with `+N`; click it, or open the task, to view them in a lightbox. |
+| `--clear-images` | Remove all images (applied before any `--image` in the same call, so both together replace them). |
+
+```sh
+sh "$SKILL_DIR/scripts/kanban.sh" edit task-01 --bot-name "Helper bot" --bot-avatar ./bot.png --steps 2/5 --image ./screenshot.png
+```
+
+Images must be **local** PNG, JPEG, GIF or WebP files up to 5 MB. URLs (`http(s):`, `data:` …) and SVG are rejected. The CLI copies each file into `<state>/images/` under a random private name; removed or replaced images are deleted.
+
+## Safety
+
+- Nobody can change the board through the browser. HTTP serves GET/HEAD only; every other method gets 405. All changes go through this CLI on the same machine.
+- The default bind is `127.0.0.1` (this machine only). `--host`/`AGENT_KANBAN_HOST` with another address exposes the board, **without authentication**, to anyone who can reach it; `start` prints a warning. Use it only on a trusted network.
+- The server serves only its own assets, the JSON snapshot and stored images (`/images/<32 hex>.<ext>`, `nosniff`, strict CSP with `img-src 'self'`). Nothing else in the state directory is reachable; images are never hotlinked.
+- `<state>/write-token` (mode 0600) is a per-board secret reserved for any future write API. It is never shown in pages, snapshots or logs. Don't share it.
+- Task text is always rendered as text, never as HTML.
+
+## See the board
+
+`start` and `status` print `local_url` (and `public_url`). Open it in a browser, or save a screenshot:
+
+```sh
+chromium --headless=new --screenshot=board.png --window-size=1600,900 --timeout=3000 http://127.0.0.1:4317/
+```
+
+## Notes
 
 Use the shell launcher for commands so missing dependencies get setup guidance. Existing `python3 scripts/kanban.py` calls remain supported when the runtime is available. Use `--help` or `<command> --help` for exact options. `list`/`show` return JSON; database transactions protect concurrent changes. `server.log`, `server.json`, and SQLite/WAL files stay in the private state directory. Back up the database with SQLite's backup API or stop writers first; copying only a live database file can omit WAL data.

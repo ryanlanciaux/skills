@@ -14,6 +14,13 @@ activity, focus, and open task details stay in place during the two-second polli
 cycle. Evidence is linked only when the recorded value is an explicit HTTP(S) URL;
 file paths remain visible references.
 
+The header bar counts done tasks out of all tasks (not an effort estimate). Cards can
+optionally show who is working them as a named bot with an avatar (`--bot-name`,
+`--bot-avatar`), their own agent-reported progress bar (`--progress 40` or
+`--steps 3/5`), and attached screenshots (`--image`, viewed in a lightbox). Images
+must be local PNG/JPEG/GIF/WebP files up to 5 MB; the CLI copies them into the
+board's private state directory. See [SKILL.md](SKILL.md) for all options.
+
 Requires Python 3.10+ with SQLite support on Linux/macOS. The shell launcher checks dependencies and prints setup instructions if Python or SQLite support is missing; it installs nothing. See [setup and recovery](references/setup.md). Copy this folder to your agent's skill
 directory (for Codex, `${CODEX_HOME:-$HOME/.codex}/skills/agent-kanban`), then ask:
 
@@ -47,9 +54,20 @@ then `AGENT_KANBAN_HOST`, then `127.0.0.1`; unset or blank environment values us
 localhost. Changing the address of a running board requires stop/start. Keep
 machine-specific settings outside the distributed skill folder.
 
-Use `--public-url` to record the address viewers should open. The server has no
-authentication; network access controls are external. No HTTP endpoint can modify
-tasks. The skill does not launch agents itself, configure networking, or survive a
+Binding anything other than a loopback address prints a warning: anyone who can
+reach the port can read the board. Use `--public-url` to record the address viewers
+should open. The server has no authentication; network access controls are external.
+No HTTP endpoint can modify tasks: every method other than GET/HEAD returns 405. A
+private `write-token` (mode 0600) in the state directory is reserved for any future
+write API and is never served.
+
+To capture the board as an image:
+
+```sh
+chromium --headless=new --screenshot=board.png --window-size=1600,900 --timeout=3000 http://127.0.0.1:4317/
+```
+
+The skill does not launch agents itself, configure networking, or survive a
 reboot automatically; `start` resumes the persisted board.
 
 Run checks with `python3 -m unittest discover -s tests -v`. The optional browser
