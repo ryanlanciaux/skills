@@ -77,10 +77,9 @@ Images must be **local** PNG, JPEG, GIF or WebP files up to 5 MB. URLs (`http(s)
 
 ## Safety
 
-- Nobody can change the board through the browser. HTTP serves GET/HEAD only; every other method gets 405. All changes go through this CLI on the same machine.
+- All changes go through this skill's CLI on the same machine as the board. The browser is view-only: there is no HTTP write path and no API key. HTTP serves GET/HEAD only; every other method gets 405.
 - The default bind is `127.0.0.1` (this machine only). `--host`/`AGENT_KANBAN_HOST` with another address exposes the board, **without authentication**, to anyone who can reach it; `start` prints a warning. Use it only on a trusted network.
 - The server serves only its own assets, the JSON snapshot and stored images (`/images/<32 hex>.<ext>`, `nosniff`, strict CSP with `img-src 'self'`). Nothing else in the state directory is reachable; images are never hotlinked.
-- `<state>/write-token` (mode 0600) is a per-board secret reserved for any future write API. It is never shown in pages, snapshots or logs. Don't share it.
 - Task text is always rendered as text, never as HTML.
 
 ## See the board

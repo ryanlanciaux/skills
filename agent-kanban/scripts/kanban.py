@@ -70,25 +70,6 @@ def connection(state):
         db.close()
 
 
-def ensure_write_token(state):
-    """Per-board secret reserved for any future HTTP write API. The viewer never
-    reads it, so it cannot leak into pages, snapshots or logs."""
-    path = state / "write-token"
-    if path.exists():
-        return
-    temporary = state / f"write-token.{os.getpid()}.{secrets.token_hex(4)}.tmp"
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        os.write(descriptor, (secrets.token_urlsafe(32) + "\n").encode())
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    # link() never replaces an existing token, so concurrent creators agree on one.
-    with contextlib.suppress(FileExistsError):
-        os.link(temporary, path)
-    temporary.unlink()
-
-
 def image_kind(head):
     if head.startswith(b"\x89PNG\r\n\x1a\n"):
         return "png"
@@ -332,7 +313,6 @@ def record(state, args, media):
         db.execute("UPDATE board SET data=?, revision=revision+1 WHERE id=1", (encode(board),))
         db.execute("INSERT INTO events(task_id, actor, message, at) VALUES (?, ?, ?, ?)", (task_id, args.actor, message, now()))
         db.commit()
-        ensure_write_token(state)
         return result or board, released
 
 
@@ -366,7 +346,6 @@ def running(state):
 
 def serve(state, args):
     snapshot(state)
-    ensure_write_token(state)
     # A lock is held for the entire server lifetime; another start cannot replace
     # metadata or accidentally orphan a process serving this board.
     with (state / "server.lock").open("a") as lock:

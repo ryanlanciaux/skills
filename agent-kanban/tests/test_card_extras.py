@@ -163,15 +163,11 @@ class CardExtrasTest(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_server_image_route_methods_and_token(self):
+    def test_server_image_route_and_read_only_methods(self):
         task = self.call("add", "task-01", "--title", "Outcome", "--bot-name", "Helper bot",
                          "--bot-avatar", self.file("a.png", PNG), "--image", self.file("b.jpg", JPEG), "--steps", "1/3")
         server = self.call("start", "--port", "0")
         base = server["local_url"]
-        token_file = self.state / "write-token"
-        self.assertEqual(stat.S_IMODE(token_file.stat().st_mode), 0o600)
-        token = token_file.read_text().strip()
-        self.assertGreaterEqual(len(token), 32)
 
         for route, data, content_type in ((task["bot_avatar"], PNG, "image/png"), (task["images"][0], JPEG, "image/jpeg")):
             status, headers, body = self.raw(base, "GET", route)
@@ -187,32 +183,21 @@ class CardExtrasTest(unittest.TestCase):
                      "/images/%2E%2E%2Fboard.sqlite3", "/images/..%2fboard.sqlite3", "/images/" + "0" * 32 + ".png",
                      "/images/" + name.upper(), "/images/" + name + "/", "/images/" + name.replace(".jpg", ".svg"),
                      "/images//" + name, "/images/" + name + "%00.png", "/images/", "/images",
-                     "/board.sqlite3", "/write-token", "/server.log", "/images/../write-token"):
+                     "/board.sqlite3", "/server.log", "/images/../server.log"):
             with self.subTest(path=path):
                 self.assertEqual(self.raw(base, "GET", path)[0], 404)
 
-        bearer = {"Authorization": "Bearer " + token}
         for method in ("POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "FOO"):
             for path in ("/api/board", task["images"][0], "/"):
-                for headers in ({}, bearer):
-                    with self.subTest(method=method, path=path, token=bool(headers)):
-                        status, response_headers, _ = self.raw(base, method, path, headers)
-                        self.assertEqual(status, 405)
-                        self.assertEqual(response_headers["Allow"], "GET, HEAD")
+                with self.subTest(method=method, path=path):
+                    status, response_headers, _ = self.raw(base, method, path)
+                    self.assertEqual(status, 405)
+                    self.assertEqual(response_headers["Allow"], "GET, HEAD")
         self.assertEqual(self.raw(base, "GET", task["images"][0])[0], 200)
 
-        for path in ("/", "/api/board", "/app.js", "/style.css", "/health"):
-            body = self.raw(base, "GET", path)[2].decode()
-            self.assertNotIn(token, body)
         snapshot = json.loads(self.raw(base, "GET", "/api/board")[2])
         self.assertEqual(snapshot["tasks"][0]["progress"], {"done": 1, "total": 3})
         self.assertEqual(snapshot["tasks"][0]["bot_avatar"], task["bot_avatar"])
-        self.assertNotIn(token, self.run_cli("list").stdout + self.run_cli("status").stdout)
-        self.assertNotIn(token, (self.state / "server.log").read_text())
-        # The token survives restarts unchanged.
-        self.call("stop")
-        self.call("start", "--port", "0")
-        self.assertEqual(token_file.read_text().strip(), token)
 
     def test_non_loopback_bind_prints_a_warning(self):
         local = self.run_cli("start", "--port", "0")

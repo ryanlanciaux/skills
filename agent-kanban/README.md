@@ -57,9 +57,9 @@ machine-specific settings outside the distributed skill folder.
 Binding anything other than a loopback address prints a warning: anyone who can
 reach the port can read the board. Use `--public-url` to record the address viewers
 should open. The server has no authentication; network access controls are external.
-No HTTP endpoint can modify tasks: every method other than GET/HEAD returns 405. A
-private `write-token` (mode 0600) in the state directory is reserved for any future
-write API and is never served.
+All changes go through the skill's CLI on the same machine as the board; the browser
+is view-only. There is no HTTP write path (every method other than GET/HEAD returns
+405) and no API key.
 
 To capture the board as an image:
 
